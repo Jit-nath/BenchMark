@@ -1,89 +1,78 @@
 # Vector database benchmark
 
-This repository benchmarks the same precomputed vectors against multiple adapters. Each adapter receives records with exactly:
+This project compares vector database performance using the same precomputed text embeddings and the same CRUD/search workload.
 
-```json
-{"id": 0, "text": "...", "embedding": [0.1, 0.2]}
-```
+## Dataset
 
-The benchmark measures insert, update, delete, and search wall time plus the process RSS delta. Embedding generation and dataset download are outside the timed path. `csv-bruteforce` is a correctness/performance baseline, not an indexed vector database.
+- Source: AG News dataset
+- Records: 10,000
+- Text field: news article title and description
+- Embedding model: `all-MiniLM-L6-v2`
+- Embedding dimensions: 384
+- Similarity metric: cosine
+- Input format: JSONL records containing `id`, `text`, and `embedding`
 
-## Prepare 50k local embeddings with Docker
+Embeddings are generated outside the timed benchmark path with:
 
 ```powershell
 docker compose run --rm embedder
 ```
 
-This downloads AG News and runs the local `all-MiniLM-L6-v2` model inside Docker. It writes `data/benchmark.jsonl` plus `data/benchmark.csv`; the model is cached in a Docker volume for later runs. Set `$env:DATASET_COUNT = 1000` for a smoke dataset.
+## Databases
 
-## Run
+The benchmark includes:
 
-```powershell
-cargo run --release -- run --backend all --data data/benchmark.jsonl
-```
+- DandelionDB
+- Qdrant
+- Chroma
+- Milvus Lite
+- Weaviate
+- PostgreSQL with pgvector
+- LanceDB
 
-DandelionDB is intentionally run natively for this comparison. Qdrant and Chroma are available as Docker Compose services with real HTTP adapters.
+Qdrant, Chroma, Weaviate, and PostgreSQL run as Docker services. Milvus Lite and LanceDB run inside the benchmark container in embedded mode.
 
-### What a run does
+## Benchmark method
 
-The runner performs these phases in order:
+Each database receives the same 10,000 records and runs these operations in order:
 
-1. Loads every JSONL record into memory. Embedding generation is not part of the benchmark.
-2. Creates a fresh DandelionDB file, or an empty CSV brute-force store.
-3. Inserts all points in batches controlled by `--batch-size` (default: 1,000).
-4. Updates every 100th point, about 500 updates for 50,000 points.
-5. Searches using the first `--search-queries` vectors (default: 100), returning `--top-k` results (default: 10).
-6. Deletes every 100th point, about 500 deletes for 50,000 points.
-7. Writes one CSV row per backend and operation to `results/results.csv`.
+1. Insert all records in batches of 1,000.
+2. Update every 100th record, for 100 updates.
+3. Search using the first 10 dataset vectors with `top-k = 10`.
+4. Delete every 100th record, for 100 deletes.
 
-Each phase records total elapsed time, average time per item, and process RSS change. The CSV backend uses brute-force cosine search, so its search cost grows with dataset size, vector dimension, and query count.
+The benchmark records elapsed time and average time per item. Database setup, schema creation, dataset loading, and embedding generation are outside the timed operations.
 
-### Expected duration
+Search correctness is verified against brute-force cosine similarity computed from the source vectors. The latest run returned 100/100 expected IDs with zero mismatches for every database.
 
-Approximate CPU timings observed in this workspace:
-
-- First Docker embedder image build: about 3–5 minutes.
-- First 50k embedding generation: about 8–10 minutes on CPU. Later runs reuse the image and model cache.
-- Native 50k benchmarking: several minutes or longer depending on hardware. DandelionDB writes are synchronous, and CSV search can be especially slow.
-- `--search-queries 10` is recommended for the first full run. `--search-queries 100` gives a more stable search average but takes substantially longer, especially for CSV.
-
-The benchmark creates or overwrites `results/dandeliondb.lion` for each DandelionDB run and does not overwrite the source dataset.
-
-## Run real Docker database adapters
-
-The Docker stack includes Qdrant, Chroma, Weaviate, PostgreSQL with pgvector, and adapters for Milvus Lite and LanceDB inside the benchmark container. The adapters use real database APIs for batched inserts, updates, deletes, and vector similarity searches. Search results are checked against brute-force cosine ground truth and the CSV reports `verification`, `correct_items`, `expected_items`, and `mismatched_queries`.
+Run the Docker databases and benchmark with:
 
 ```powershell
-docker compose up -d qdrant chroma
+docker compose up -d qdrant chroma weaviate postgres
 docker compose run --rm remote-benchmark
-```
-
-Milvus runs in embedded Milvus Lite mode inside the benchmark container because the full standalone Milvus deployment requires additional etcd and object-storage services. LanceDB is also embedded in the benchmark container.
-
-Results are written to `results/remote-results.csv`. Set `$env:SEARCH_QUERIES = 100` before the command for a larger search workload. Stop the services afterward with:
-
-```powershell
 docker compose down
 ```
 
-## Visualize results without a virtual environment
-
-Install the plotting package directly into the active/global Python installation:
+Run DandelionDB natively with:
 
 ```powershell
-.\scripts\install_global.ps1
+cargo run --release -- run --backend dandeliondb --data data/benchmark.jsonl --batch-size 1000 --search-queries 10 --top-k 10 --output results/dandeliondb-results.csv --db-path results/dandeliondb.lion
 ```
 
-Then create a PNG from `results/results.csv`:
+## Latest results
 
-```powershell
-py scripts/visualize.py
-```
+Elapsed times for the 10,000-record run, sorted fastest to slowest within each operation:
 
-The default output is `results/benchmark.png`. If benchmark results do not exist yet, the script automatically plots the embedding-norm distribution from `data/benchmark.jsonl`. You can choose another output with `--output` or sample size with `--sample`.
+| Database | Insert (ms) | Update (ms) | Search (ms) | Delete (ms) |
+|---|---:|---:|---:|---:|
+| DandelionDB | 1534.4523 | 174.3961 | 79.3366 | 148.8801 |
+| Qdrant | 3196.649095 | 38.403694 | 37.758646 | 3.817127 |
+| Chroma | 8655.917985 | 147.483587 | 28.128080 | 106.678894 |
+| Milvus Lite | 1770.836101 | 18.882561 | 97.178104 | 3.960079 |
+| Weaviate | 5915.739882 | 56.996837 | 45.661533 | 178.156093 |
+| PostgreSQL + pgvector | 3230.812506 | 36.301885 | 74.612379 | 3.597597 |
+| LanceDB | 219.386696 | 648.827375 | 323.149849 | 450.339935 |
 
-Results are written to `results/results.csv`. Use `--backend csv` or `--backend dandeliondb` to run one adapter. `--batch-size`, `--search-queries`, and `--top-k` control the workload.
+![Benchmark results](benchmark.png)
 
-## Adding a database
-
-Implement `VectorStore` in `src/main.rs` (or split it into `adapter/`), using the same `Point` type and operation semantics. Keep embedding generation, serialization, and result formatting outside the adapter timings. For a fair comparison, use the same metric (cosine), dimension, batch size, query vectors, and top-k across adapters.
+Detailed CSV results are preserved in `results/dandeliondb-results.csv` and `results/remote-results.csv`. The generated database files and all historical result files remain in `results/` and are excluded from Git by `.gitignore`.
