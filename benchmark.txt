@@ -1,0 +1,50 @@
+Vector database benchmark
+=========================
+
+Dataset: 10,000 records | Search queries: 10 | Top-k: 10 | Metric: cosine
+Search verification: brute-force cosine ground truth; all databases passed 100/100 IDs with 0 mismatches.
+
+Insert (elapsed_ms; per_item_us)
+---------------------------------------
+Database                 elapsed_ms             per_item_us
+LanceDB                    219.38669599990135       21.938669599990135
+DandelionDB                         1534.4523       153.44522999999998
+Milvus Lite                1770.8361009999862       177.08361009999862
+Qdrant                     3196.6490950001116       319.66490950001116
+PostgreSQL + pgvector       3230.812505999893        323.0812505999893
+Weaviate                    5915.739882000025        591.5739882000025
+Chroma                       8655.91798499986         865.591798499986
+
+Update (elapsed_ms; per_item_us)
+---------------------------------------
+Database                 elapsed_ms             per_item_us
+Milvus Lite                 18.88256100005492        188.8256100005492
+PostgreSQL + pgvector       36.30188499982978        363.0188499982978
+Qdrant                      38.40369399995325        384.0369399995325
+Weaviate                    56.99683700004243        569.9683700004243
+Chroma                     147.48358699989694       1474.8358699989694
+DandelionDB                          174.3961                 1743.961
+LanceDB                     648.8273749998825        6488.273749998825
+
+Search (elapsed_ms; per_item_us)
+---------------------------------------
+Database                 elapsed_ms             per_item_us
+Chroma                     28.128079999987676       2812.8079999987676
+Qdrant                     37.758645999929286       3775.8645999929286
+Weaviate                    45.66153299992948        4566.153299992948
+PostgreSQL + pgvector       74.61237899997286        7461.237899997286
+DandelionDB                 79.33659999999999        7933.659999999999
+Milvus Lite                 97.17810400002236        9717.810400002236
+LanceDB                     323.1498489999467       32314.984899994673
+
+Delete (elapsed_ms; per_item_us)
+---------------------------------------
+Database                 elapsed_ms             per_item_us
+PostgreSQL + pgvector      3.5975970001800306       35.975970001800306
+Qdrant                      3.817127000047549        38.17127000047549
+Milvus Lite                 3.960078999853067        39.60078999853067
+Chroma                     106.67889399996966       1066.7889399996966
+DandelionDB                          148.8801       1488.8009999999997
+Weaviate                   178.15609300009783       1781.5609300009785
+LanceDB                    450.33993499987446        4503.399349998745
+

@@ -1,0 +1,66 @@
+services:
+  embedder:
+    build:
+      context: .
+      dockerfile: docker/embedder.Dockerfile
+    command: ["--count", "${DATASET_COUNT:-50000}"]
+    volumes:
+      - ./data:/workspace/data
+      - huggingface-cache:/cache/huggingface
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    ports:
+      - "6334:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  chroma:
+    image: chromadb/chroma:1.5.5
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/data
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.40.3
+    ports:
+      - "8080:8080"
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: node1
+    volumes:
+      - weaviate-data:/var/lib/weaviate
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: benchmark
+      POSTGRES_DB: benchmark
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  remote-benchmark:
+    build:
+      context: .
+      dockerfile: docker/remote-benchmark.Dockerfile
+    depends_on:
+      - qdrant
+      - chroma
+      - weaviate
+      - postgres
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results
+    command: ["--data", "/workspace/data/benchmark.jsonl", "--output", "/workspace/results/remote-results.csv", "--search-queries", "${SEARCH_QUERIES:-10}"]
+
+volumes:
+  huggingface-cache:
+  qdrant-data:
+  chroma-data:
+  weaviate-data:
+  postgres-data:

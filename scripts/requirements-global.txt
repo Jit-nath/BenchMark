@@ -1,0 +1,2 @@
+# Install directly into the active/global Python installation; no virtualenv is required.
+matplotlib>=3.8
